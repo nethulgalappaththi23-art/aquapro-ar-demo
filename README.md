@@ -2,7 +2,7 @@
 
 An AR product demo built with A-Frame and AR.js. Show the Hiro marker to the camera to see the product on a display stand.
 
-**Live demo:** PASTE-YOUR-LINK-HERE
+**Live demo:** https://nethulgalappaththi23-art.github.io/aquapro-ar-demo/
 
 ## Features
 - Marker scene: cylinder stand, sphere, box, 3D model and text labels
