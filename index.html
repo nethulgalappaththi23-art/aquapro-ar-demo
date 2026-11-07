@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AquaPro Bottle: AR Product Demo</title>
+  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    #banner {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
+      pointer-events: none;
+      padding: 14px; text-align: center; font-size: 18px; font-weight: bold;
+      color: #fff; background: #c0392b; transition: background 0.3s;
+    }
+    #banner.found { background: #27ae60; }
+    #debug {
+      position: fixed; bottom: 0; left: 0; z-index: 99999; pointer-events: none;
+      padding: 4px 8px; font-size: 12px; color: #fff; background: rgba(0,0,0,0.6);
+    }
+  </style>
+
+  <!-- Components are registered HERE, before the scene loads -->
+  <script>
+    function say(msg) {
+      var d = document.getElementById('debug');
+      if (d) d.textContent = 'debug: ' + msg;
+    }
+
+    // Component 1: tap the ball to cycle colour variants
+    AFRAME.registerComponent('color-change', {
+      init: function () {
+        var colors = ['#3498db', '#e74c3c', '#2ecc71', '#9b59b6'];
+        var i = 0;
+        this.el.addEventListener('click', () => {
+          i = (i + 1) % colors.length;
+          this.el.setAttribute('material', 'color', colors[i]);
+          say('ball colour = ' + colors[i]);
+        });
+      }
+    });
+
+    // Component 2 (new): tap to show / hide another object
+    AFRAME.registerComponent('features-toggle', {
+      schema: { target: { type: 'selector' } },
+      init: function () {
+        this.el.addEventListener('click', () => {
+          var t = this.data.target;
+          var show = !t.getAttribute('visible');
+          t.setAttribute('visible', show);
+          say('features visible = ' + show);
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+  <div id="banner">Loading...</div>
+  <div id="debug">debug: waiting</div>
+
+  <a-scene embedded vr-mode-ui="enabled: false"
+           arjs="sourceType: webcam; debugUIEnabled: false;">
+
+    <a-marker id="hiro" preset="hiro">
+
+      <!-- Primitive 1: display stand -->
+      <a-cylinder position="0 0.1 0" radius="0.45" height="0.2" color="#34495e"></a-cylinder>
+
+      <!-- glTF product model, slowly rotating (rotation animation) -->
+      <a-entity gltf-model="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/WaterBottle/glTF-Binary/WaterBottle.glb"
+                position="0 0.55 0" scale="2.5 2.5 2.5"
+                animation="property: rotation; to: 0 360 0; dur: 6000; easing: linear; loop: true"></a-entity>
+
+      <!-- Primitive 2: colour swatch ball, tap = change colour (bobs: position animation) -->
+      <a-sphere class="clickable" id="ball" color-change
+                position="-0.75 0.3 0" radius="0.2" color="#3498db"
+                animation="property: position; from: -0.75 0.3 0; to: -0.75 0.55 0; dur: 1200; dir: alternate; easing: easeInOutSine; loop: true"></a-sphere>
+
+      <!-- Primitive 3: info button, tap = show / hide the features panel -->
+      <a-box class="clickable" id="infobox" features-toggle="target: #features"
+             position="0.75 0.15 0" width="0.35" height="0.35" depth="0.35" color="#f39c12">
+        <a-text value="INFO" align="center" color="#000" width="2"
+                position="0 0.18 0" rotation="-90 0 0"></a-text>
+      </a-box>
+
+      <!-- Features panel (hidden until the box is tapped) -->
+      <a-text id="features" visible="false" align="center" color="#ffffff" width="2.2"
+              position="0 1.0 0" rotation="-30 0 0"
+              value="750 ml  |  Keeps drinks cold 24h&#10;BPA free  |  Leak proof lid"></a-text>
+
+      <!-- Product name and price, lying flat on the marker -->
+      <a-text value="AquaPro Bottle - $19" align="center" color="#ffffff"
+              position="0 0.02 0.8" rotation="-90 0 0" width="2.5"></a-text>
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    // Status banner: plain script
+    (function () {
+      var banner = document.getElementById('banner');
+      var state = null;
+      function setState(isFound) {
+        if (isFound === state) return;
+        state = isFound;
+        if (isFound) {
+          banner.textContent = 'Product found: tap the ball and the INFO box';
+          banner.classList.add('found');
+        } else {
+          banner.textContent = 'Scan the Hiro marker to view the product';
+          banner.classList.remove('found');
+        }
+      }
+      setInterval(function () {
+        var m = document.getElementById('hiro');
+        if (m && m.object3D) setState(m.object3D.visible);
+      }, 200);
+      document.addEventListener('markerFound', function () { setState(true); });
+      document.addEventListener('markerLost', function () { setState(false); });
+    })();
+
+    // Tap detection: project each clickable object to the screen and
+    // pick the one nearest to the tap (within 80 px).
+    (function () {
+      window.addEventListener('pointerup', function (e) {
+        var scene = document.querySelector('a-scene');
+        var marker = document.getElementById('hiro');
+        if (!scene || !scene.canvas || !scene.camera) { say('scene not ready'); return; }
+        if (!marker.object3D.visible) { say('marker not visible'); return; }
+
+        var cam = scene.camera;
+        cam.updateMatrixWorld(true);
+        var r = scene.canvas.getBoundingClientRect();
+        var best = null, bestDist = 80;
+
+        document.querySelectorAll('.clickable').forEach(function (el) {
+          var p = new THREE.Vector3();
+          el.object3D.getWorldPosition(p);
+          p.project(cam);
+          var sx = r.left + (p.x + 1) / 2 * r.width;
+          var sy = r.top + (1 - p.y) / 2 * r.height;
+          var d = Math.hypot(e.clientX - sx, e.clientY - sy);
+          if (d < bestDist) { bestDist = d; best = el; }
+        });
+
+        if (best) {
+          say('hit ' + best.id + ' (component runs next)');
+          best.emit('click');
+        } else {
+          say('no object near tap');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
